@@ -151,5 +151,63 @@ static int build_tree(Index *index, const char *prefix, ObjectID *out) {
         }
 
         const char *slash = strchr(rel, '/');
+        if (!slash) {
+            TreeEntry *e = &tree.entries[tree.count++];
+            e->mode = index->entries[i].mode;
+            e->hash = index->entries[i].hash;
+            snprintf(e->name, sizeof(e->name), "%s", rel);
+        } else {
+            int dlen = slash - rel;
+            char dirname[256];
+            strncpy(dirname, rel, dlen);
+            dirname[dlen] = '\0';
+
+            int exists = 0;
+            for (int j = 0; j < seen_count; j++) {
+                if (strcmp(seen[j], dirname) == 0) {
+                    exists = 1;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                strcpy(seen[seen_count++], dirname);
+
+                char new_prefix[512];
+                if (plen == 0)
+                    snprintf(new_prefix, sizeof(new_prefix), "%s", dirname);
+                else
+                    snprintf(new_prefix, sizeof(new_prefix), "%s/%s", prefix, dirname);
+
+                ObjectID sub;
+                if (build_tree(index, new_prefix, &sub) != 0)
+                    return -1;
+
+                TreeEntry *e = &tree.entries[tree.count++];
+                e->mode = MODE_DIR;
+                e->hash = sub;
+                snprintf(e->name, sizeof(e->name), "%s", dirname);
+            }
+        }
+    }
+
+    void *raw;
+    size_t raw_len;
+
+    if (tree_serialize(&tree, &raw, &raw_len) != 0)
+        return -1;
+
+    int rc = object_write(OBJ_TREE, raw, raw_len, out);
+    free(raw);
+    return rc;
+}
+
+int tree_from_index(ObjectID *id_out) {
+    Index index;
+    if (index_load(&index) != 0)
+        return -1;
+
+    return build_tree(&index, "", id_out);
+}
 
 
