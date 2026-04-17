@@ -1,4 +1,4 @@
-// object.c — Content-addressable object store
+  // object.c — Content-addressable object store
 //
 // Every piece of data (file contents, directory listings, commits) is stored
 // as an "object" named by its SHA-256 hash. Objects are stored under
@@ -94,9 +94,69 @@ int object_exists(const ObjectID *id) {
 //
 // Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
-    return -1;
+    const char *type_str;
+    switch (type) {
+        case OBJ_BLOB: type_str = "blob"; break;
+        case OBJ_TREE: type_str = "tree"; break;
+        case OBJ_COMMIT: type_str = "commit"; break;
+        default: return -1;
+    }
+
+    char header[64];
+    int hlen = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1;
+
+    size_t total = hlen + len;
+    uint8_t *buf = malloc(total);
+    if (!buf) return -1;
+
+    memcpy(buf, header, hlen);
+    memcpy(buf + hlen, data, len);
+
+    compute_hash(buf, total, id_out);
+
+    if (object_exists(id_out)) {
+        free(buf);
+        return 0;
+    }
+
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(id_out, hex);
+
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/%.2s", OBJECTS_DIR, hex);
+    mkdir(dir, 0755);
+
+    char final[512];
+    object_path(id_out, final, sizeof(final));
+
+    char tmp[520];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", final);
+
+    int fd = open(tmp, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) { free(buf); return -1; }
+
+    if (write(fd, buf, total) != (ssize_t)total) {
+        close(fd);
+        free(buf);
+        return -1;
+    }
+
+    fsync(fd);
+    close(fd);
+
+    if (rename(tmp, final) != 0) {
+        free(buf);
+        return -1;
+    }
+
+    int dfd = open(dir, O_RDONLY);
+    if (dfd >= 0) {
+        fsync(dfd);
+        close(dfd);
+    }
+
+    free(buf);
+    return 0;
 }
 
 // Read an object from the store.
