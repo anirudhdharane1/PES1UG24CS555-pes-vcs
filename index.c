@@ -198,6 +198,12 @@ int index_save(const Index *index) {
                 copy.entries[i].path);
     }
 
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+
+    return rename(INDEX_FILE ".tmp", INDEX_FILE);
+}
 
 
 // Stage a file for the next commit.
