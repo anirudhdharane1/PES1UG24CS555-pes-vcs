@@ -169,7 +169,6 @@ static int build_tree(Index *index, const char *prefix, ObjectID *out) {
                     break;
                 }
             }
-
             if (!exists) {
                 strcpy(seen[seen_count++], dirname);
 
@@ -209,5 +208,6 @@ int tree_from_index(ObjectID *id_out) {
 
     return build_tree(&index, "", id_out);
 }
+
 
 
